@@ -1,0 +1,414 @@
+// THEMES CONFIGURATION
+const THEMES = {
+  dark: {
+    name: "Dark",
+    backgroundColor: new Color("#333333"),
+    fontColor: Color.white(),
+    pastDotColor: new Color("#777777"),
+    futureDotColor: new Color("#ffffff", 0.2),
+    completedDotColor: Color.red(),
+  },
+  light: {
+    name: "Light",
+    backgroundColor: new Color("#f5f5f7"),
+    fontColor: Color.black(),
+    pastDotColor: Color.gray(),
+    futureDotColor: new Color("#cccccc", 0.5),
+    completedDotColor: new Color("#FF3B30"),
+  },
+  midnight: {
+    name: "Midnight",
+    backgroundColor: new Color("#000000"),
+    fontColor: new Color("#ffffff"),
+    pastDotColor: new Color("#555555"),
+    futureDotColor: new Color("#333333"),
+    completedDotColor: new Color("#0A84FF"),
+  },
+  forest: {
+    name: "Forest",
+    backgroundColor: new Color("#2C3639"),
+    fontColor: new Color("#DCD7C9"),
+    pastDotColor: new Color("#A27B5C"),
+    futureDotColor: new Color("#3F4E4F"),
+    completedDotColor: new Color("#7DCE13"),
+  },
+  sunset: {
+    name: "Sunset",
+    backgroundColor: new Color("#1A1A2E"),
+    fontColor: new Color("#FFFFFF"),
+    pastDotColor: new Color("#C9ADA7"),
+    futureDotColor: new Color("#4A4E69", 0.7),
+    completedDotColor: new Color("#FF8C32"),
+  },
+}
+
+// USER SETTINGS - These can be modified directly
+const USER_SETTINGS = {
+  habitName: "study", // Customize your habit name
+  year: new Date().getFullYear(), // Current year by default
+  defaultTheme: "dark", // Default theme key
+  
+  // Appearance settings
+  dotSize: 3, // Customize dot diameter
+  dotSpacing: 3, // Space between dots
+  fontSize: 14, // Font size for text
+  fontName: "Menlo", // Font for text
+  
+  // Initial log data (will be overwritten by saved data)
+  initialLoggedDates: ["2025-04-15", "2025-04-16", "2025-04-17", "2025-04-18", "2025-04-19"],
+  
+  // Advanced settings
+  storageKey: "habitTrackerData", // Key for persistent storage
+  startWeekday: 1, // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  
+  // Removed problematic labels
+  showMonthLabels: false,
+  showWeekdayLabels: false,
+  showYearLabel: true,
+}
+
+// STORAGE FUNCTIONS
+function loadData() {
+  let data = {
+    loggedDates: USER_SETTINGS.initialLoggedDates || [],
+    currentTheme: USER_SETTINGS.defaultTheme,
+    settings: USER_SETTINGS,
+  }
+
+  try {
+    const stored = Keychain.get(USER_SETTINGS.storageKey)
+    if (stored) {
+      const parsedData = JSON.parse(stored)
+      
+      // Merge saved settings with defaults (allows for adding new settings)
+      data.loggedDates = parsedData.loggedDates || data.loggedDates
+      data.currentTheme = parsedData.currentTheme || USER_SETTINGS.defaultTheme
+      data.settings = { ...USER_SETTINGS, ...(parsedData.settings || {}) }
+    }
+  } catch (e) {
+    console.log("Error loading data: " + e)
+  }
+
+  return data
+}
+
+function saveData(data) {
+  try {
+    Keychain.set(USER_SETTINGS.storageKey, JSON.stringify(data))
+    return true
+  } catch (e) {
+    console.log("Error saving data: " + e)
+    return false
+  }
+}
+
+// HELPER FUNCTIONS
+function isSameDay(date1, date2) {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  )
+}
+
+function formatDate(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function drawDot(size, color) {
+  const ctx = new DrawContext()
+  ctx.size = new Size(size, size)
+  ctx.opaque = false
+  ctx.setFillColor(color)
+  ctx.fillEllipse(new Rect(0, 0, size, size))
+  return ctx.getImage()
+}
+
+function isLogged(date, loggedDates) {
+  return loggedDates.some((d) => isSameDay(new Date(d), date))
+}
+
+// Fixed streak calculation function
+function calculateStreak(loggedDates) {
+  if (!loggedDates || loggedDates.length === 0) return 0
+
+  // Convert string dates to Date objects and sort (newest first)
+  const sortedDates = [...loggedDates].map((d) => new Date(d)).sort((a, b) => b - a)
+
+  let streak = 0
+  const currentDate = new Date()
+  currentDate.setHours(0, 0, 0, 0)
+
+  // Check if today is logged
+  const todayLogged = sortedDates.some((d) => isSameDay(d, currentDate))
+
+  // If today is not logged, start checking from yesterday
+  if (!todayLogged) {
+    currentDate.setDate(currentDate.getDate() - 1)
+  }
+
+  // Count consecutive days
+  while (true) {
+    const dateLogged = sortedDates.some((d) => isSameDay(d, currentDate))
+    if (!dateLogged) break
+
+    streak++
+    currentDate.setDate(currentDate.getDate() - 1)
+  }
+
+  return streak
+}
+
+function toggleTodayLog(loggedDates) {
+  const today = new Date()
+  const todayFormatted = formatDate(today)
+
+  // Check if today is already logged
+  const todayIndex = loggedDates.findIndex((d) => isSameDay(new Date(d), today))
+
+  if (todayIndex >= 0) {
+    // Remove today if already logged
+    loggedDates.splice(todayIndex, 1)
+  } else {
+    // Add today if not logged
+    loggedDates.push(todayFormatted)
+  }
+
+  return loggedDates
+}
+
+// Theme functions
+function cycleTheme(data) {
+  const themeKeys = Object.keys(THEMES)
+  const currentIndex = themeKeys.indexOf(data.currentTheme)
+  const nextIndex = (currentIndex + 1) % themeKeys.length
+  data.currentTheme = themeKeys[nextIndex]
+  return data
+}
+
+function getThemeColors(themeKey) {
+  return THEMES[themeKey] || THEMES[USER_SETTINGS.defaultTheme]
+}
+
+// SETTINGS UI
+async function showSettingsUI(data) {
+  const alert = new Alert()
+  alert.title = "Habit Tracker Settings"
+  alert.message = "Customize your habit tracker"
+  
+  alert.addTextField("Habit Name", data.settings.habitName)
+  
+  alert.addAction("Save")
+  alert.addAction("Advanced Settings")
+  alert.addCancelAction("Cancel")
+  
+  const response = await alert.presentAlert()
+  
+  if (response === 0) {
+    // Save basic settings
+    data.settings.habitName = alert.textFieldValue(0)
+    saveData(data)
+    return true
+  } else if (response === 1) {
+    // Show advanced settings
+    return await showAdvancedSettingsUI(data)
+  }
+  
+  return false
+}
+
+async function showAdvancedSettingsUI(data) {
+  const alert = new Alert()
+  alert.title = "Advanced Settings"
+  
+  alert.addTextField("Dot Size (1-5)", String(data.settings.dotSize))
+  alert.addTextField("Dot Spacing (1-5)", String(data.settings.dotSpacing))
+  alert.addTextField("Font Size (10-20)", String(data.settings.fontSize))
+  
+  // Add more fields as needed
+  
+  alert.addAction("Save")
+  alert.addCancelAction("Cancel")
+  
+  const response = await alert.presentAlert()
+  
+  if (response === 0) {
+    // Parse and validate number inputs
+    const dotSize = parseInt(alert.textFieldValue(0))
+    const dotSpacing = parseInt(alert.textFieldValue(1))
+    const fontSize = parseInt(alert.textFieldValue(2))
+    
+    // Validate inputs
+    data.settings.dotSize = isNaN(dotSize) ? data.settings.dotSize : Math.min(Math.max(dotSize, 1), 5)
+    data.settings.dotSpacing = isNaN(dotSpacing) ? data.settings.dotSpacing : Math.min(Math.max(dotSpacing, 1), 5)
+    data.settings.fontSize = isNaN(fontSize) ? data.settings.fontSize : Math.min(Math.max(fontSize, 10), 20)
+    
+    saveData(data)
+    return true
+  }
+  
+  return false
+}
+
+// MAIN WIDGET FUNCTION
+function createWidget(data) {
+  const widget = new ListWidget()
+  const settings = data.settings
+
+  // Get current theme colors
+  const theme = getThemeColors(data.currentTheme)
+
+  widget.backgroundColor = theme.backgroundColor
+  widget.setPadding(12, 12, 12, 12)
+  
+  // Add title with year
+  if (settings.showYearLabel) {
+    const titleStack = widget.addStack()
+    titleStack.layoutHorizontally()
+    
+    const title = titleStack.addText(settings.habitName)
+    title.font = new Font(settings.fontName, settings.fontSize + 2)
+    title.textColor = theme.fontColor
+    
+    titleStack.addSpacer()
+    
+    const yearLabel = titleStack.addText(String(settings.year))
+    yearLabel.font = new Font(settings.fontName, settings.fontSize - 2)
+    yearLabel.textColor = theme.fontColor
+    yearLabel.textOpacity = 0.7
+    
+    widget.addSpacer(8)
+  }
+
+  // Create dot grid
+  const gridStack = widget.addStack()
+  gridStack.layoutVertically()
+  gridStack.spacing = settings.dotSpacing
+
+  // Calculate start date and grid dimensions
+  const startDate = new Date(`${settings.year}-01-01`)
+  const jsWeekday = startDate.getDay() // 0 (Sun) - 6 (Sat)
+  
+  // Adjust to selected start weekday (default to Monday)
+  let offsetDays = (jsWeekday - settings.startWeekday + 7) % 7
+  startDate.setDate(startDate.getDate() - offsetDays)
+  
+  const today = new Date()
+  const endDate = new Date(settings.year, 11, 31)
+  const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
+  const totalWeeks = Math.ceil(totalDays / 7)
+
+  for (let row = 0; row < 7; row++) {
+    const rowStack = gridStack.addStack()
+    rowStack.layoutHorizontally()
+    rowStack.spacing = settings.dotSpacing
+
+    for (let col = 0; col < totalWeeks; col++) {
+      const dayIndex = col * 7 + row
+      const currentDate = new Date(startDate)
+      currentDate.setDate(currentDate.getDate() + dayIndex)
+
+      if (currentDate > endDate) break
+
+      let color
+      if (isLogged(currentDate, data.loggedDates)) {
+        color = theme.completedDotColor
+      } else if (currentDate > today) {
+        color = theme.futureDotColor
+      } else {
+        color = theme.pastDotColor
+      }
+
+      const dotImage = drawDot(settings.dotSize, color)
+      const dot = rowStack.addImage(dotImage)
+      dot.imageSize = new Size(settings.dotSize, settings.dotSize)
+    }
+  }
+
+  // Add footer
+  widget.addSpacer(8)
+  const footer = widget.addStack()
+  footer.layoutHorizontally()
+
+  // Calculate and display streak
+  const streak = calculateStreak(data.loggedDates)
+  const streakText = footer.addText(`${streak} day streak`)
+  streakText.font = new Font(settings.fontName, settings.fontSize)
+  streakText.textColor = theme.fontColor
+
+  footer.addSpacer()
+  
+  // Add theme indicator
+  const themeText = footer.addText(theme.name)
+  themeText.font = new Font(settings.fontName, settings.fontSize - 2)
+  themeText.textColor = theme.fontColor
+  themeText.textOpacity = 0.7
+
+  return widget
+}
+
+// MAIN EXECUTION
+async function run() {
+  const data = loadData()
+  let widget = createWidget(data)
+  let settingsChanged = false
+
+  // Handle widget taps and actions
+  if (config.runsInApp) {
+    // Show a menu when running in app
+    const alert = new Alert()
+    alert.title = "Habit Tracker Options"
+    alert.addAction("Toggle Today")
+    alert.addAction("Change Theme")
+    alert.addAction("Settings")
+    alert.addCancelAction("Cancel")
+
+    const selection = await alert.presentSheet()
+    
+    if (selection === 0) {
+      // Toggle today's log
+      data.loggedDates = toggleTodayLog(data.loggedDates)
+      saveData(data)
+      widget = createWidget(data)
+      widget.presentMedium()
+    } else if (selection === 1) {
+      // Cycle through themes
+      cycleTheme(data)
+      saveData(data)
+      widget = createWidget(data)
+      widget.presentMedium()
+    } else if (selection === 2) {
+      // Show settings
+      settingsChanged = await showSettingsUI(data)
+      if (settingsChanged) {
+        widget = createWidget(data)
+        widget.presentMedium()
+      }
+    }
+  } else if (args.widgetParameter === "toggle") {
+    // Handle widget parameter for toggle
+    data.loggedDates = toggleTodayLog(data.loggedDates)
+    saveData(data)
+    Script.setWidget(widget)
+  } else if (args.widgetParameter === "theme") {
+    // Handle widget parameter for theme change
+    cycleTheme(data)
+    saveData(data)
+    Script.setWidget(widget)
+  } else if (config.runsInWidget) {
+    // When running in widget, just set up the widget
+    Script.setWidget(widget)
+  } else {
+    // Default behavior when tapping widget: toggle today
+    data.loggedDates = toggleTodayLog(data.loggedDates)
+    saveData(data)
+    widget.presentMedium()
+  }
+
+  Script.complete()
+}
+
+await run()
