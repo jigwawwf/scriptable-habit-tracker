@@ -2,7 +2,7 @@
 
 > 🎥 Credit: [James Scholz's YouTube Video](https://youtu.be/Cu-IMFl37LA?t=138)
 
-A simple and customizable iOS habit tracker widget built with [Scriptable](https://scriptable.app), inspired by minimalist design and James Scholz’s productivity setup.
+A simple and customizable iOS habit tracker widget built with [Scriptable](https://scriptable.app), inspired by James Scholz
 
 ---
 
@@ -11,7 +11,7 @@ A simple and customizable iOS habit tracker widget built with [Scriptable](https
 1. Download the **Scriptable** app from the App Store (if you haven’t already).
 2. Create a new script and name it exactly: `Habit Tracker Widget`  
    *(Case-sensitive to ensure compatibility.)*
-3. Copy the code provided in this repo and paste it into your script.
+3. Copy the code provided and paste it into your script.
 4. Run the script once inside the Scriptable app.
 5. Add a new **medium-sized Scriptable widget** to your home screen.
 6. Long-press the widget and tap **Edit Widget**:
